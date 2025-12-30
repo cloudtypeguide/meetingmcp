@@ -11,26 +11,23 @@ import { fileURLToPath } from "url";
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// 🟢 [완료] 백엔드 주소 입력됨 (수정 불필요)
+// 백엔드 주소
 const SPRING_API_URL = "https://port-0-cloudtype-backend-template-mg2vve8668cb34cb.sel3.cloudtype.app/api/guests";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 리액트 빌드 파일 제공
 app.use(cors());
 app.use(express.static(path.join(__dirname, "build")));
 
-// 🟢 [수정됨] 요청이 올 때마다 실행되는 MCP 처리 함수
 app.post("/mcp", async (req, res) => {
   try {
-    // 1. 요청마다 새로운 MCP 서버 인스턴스 생성
     const mcpServer = new McpServer({
       name: "Booking MCP",
       version: "1.0.0",
     });
 
-    // 2. 리액트 UI 리소스 등록
+    // 1. UI 리소스 등록
     mcpServer.registerResource(
       "booking-ui",
       "ui://widget/index.html",
@@ -42,31 +39,70 @@ app.post("/mcp", async (req, res) => {
           contents: [{
             uri: "ui://widget/index.html",
             mimeType: "text/html",
-            text: html
+            text: html,
+            // 🟢 [추가] 테두리 설정 등 UI 관련 메타데이터
+            _meta: { "openai/widgetPrefersBorder": true } 
           }]
         };
       }
     );
 
-    // 3. 예약 도구 등록
+    // 2. 스케줄 조회 도구
+    mcpServer.registerTool(
+      "check_schedule",
+      {
+        title: "예약 현황 조회",
+        description: "현재 잡혀있는 예약 목록을 조회합니다.",
+        inputSchema: {},
+        // 🟢 [핵심 추가] 이 도구를 쓰면 결과로 'booking-ui'를 보여줘라!
+        _meta: {
+          "openai/outputTemplate": "ui://widget/index.html",
+          "openai/toolInvocation/invoking": "스케줄을 조회하고 있습니다...",
+          "openai/toolInvocation/invoked": "스케줄 조회 완료",
+        }
+      },
+      async () => {
+        try {
+          console.log("👀 스케줄 조회 요청");
+          const response = await fetch(SPRING_API_URL);
+          if (!response.ok) throw new Error("데이터 조회 실패");
+          const data = await response.json();
+          return { 
+            content: [{ type: "text", text: JSON.stringify(data) }],
+            // UI에 데이터를 전달하기 위해 structuredContent 사용
+            structuredContent: { tasks: data } 
+          };
+        } catch (error) {
+          return { content: [{ type: "text", text: `에러: ${error.message}` }], isError: true };
+        }
+      }
+    );
+
+    // 3. 예약 도구
     mcpServer.registerTool(
       "book_guest",
       {
         title: "회의실 예약하기",
         description: "회의실을 예약합니다.",
         inputSchema: {
-          deptName: z.string(),
-          bookerName: z.string(),
-          roomName: z.string(),
-          date: z.string(),
-          startTime: z.string(),
-          endTime: z.string(),
-          timeInfo: z.string()
+          deptName: z.string().describe("부서명"),
+          bookerName: z.string().describe("예약자명"),
+          roomName: z.string().describe("회의실 이름"),
+          date: z.string().describe("날짜 (YYYY-MM-DD)"),
+          startTime: z.string().describe("시작 시간 (HH:mm)"),
+          endTime: z.string().describe("종료 시간 (HH:mm)"),
+          timeInfo: z.string().describe("회의 내용")
+        },
+        // 🟢 [핵심 추가] 예약 기능을 쓸 때도 UI를 보여줘라!
+        _meta: {
+          "openai/outputTemplate": "ui://widget/index.html",
+          "openai/toolInvocation/invoking": "예약을 진행 중입니다...",
+          "openai/toolInvocation/invoked": "예약 처리 완료",
         }
       },
       async (args) => {
         try {
-          console.log("📤 예약 요청 전송:", args);
+          console.log("📤 예약 요청:", args);
           const response = await fetch(SPRING_API_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -75,36 +111,28 @@ app.post("/mcp", async (req, res) => {
           
           if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(errorText);
+            return { 
+              content: [{ type: "text", text: `예약 실패: ${errorText}` }],
+              isError: true 
+            };
           }
           
-          // 성공 시 UI 업데이트를 위한 빈 객체 반환 or 메시지
-          return { content: [{ type: "text", text: "예약이 성공적으로 완료되었습니다!" }] };
+          return { content: [{ type: "text", text: "성공적으로 예약되었습니다." }] };
         } catch (error) {
-          console.error("❌ 예약 실패:", error);
-          return { content: [{ type: "text", text: `에러 발생: ${error.message}` }], isError: true };
+          return { content: [{ type: "text", text: `서버 에러: ${error.message}` }], isError: true };
         }
       }
     );
 
-    // 4. 새로운 연결(Transport) 생성 및 연결
-    const transport = new StreamableHTTPServerTransport({ 
-      enableJsonResponse: true 
-    });
-
+    const transport = new StreamableHTTPServerTransport({ enableJsonResponse: true });
     await mcpServer.connect(transport);
     await transport.handleRequest(req, res);
 
   } catch (error) {
-    console.error("MCP 연결 에러:", error);
-    if (!res.headersSent) {
-      res.status(500).send("Internal Server Error");
-    }
+    console.error("MCP Error:", error);
+    if (!res.headersSent) res.status(500).send("Server Error");
   }
 });
 
 const httpServer = createServer(app);
-
-httpServer.listen(PORT, () => {
-  console.log(`🚀 MCP Server running on port ${PORT}`);
-});
+httpServer.listen(PORT, () => console.log(`🚀 MCP Server running on port ${PORT}`));
