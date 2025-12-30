@@ -11,13 +11,13 @@ import { fileURLToPath } from "url";
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// 🟢 [완료] 사용자의 백엔드 주소를 입력해 두었습니다.
+// 백엔드 주소
 const SPRING_API_URL = process.env.SPRING_API_URL || "https://port-0-cloudtype-backend-template-mg2vve8668cb34cb.sel3.cloudtype.app/api/guests";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 리액트 빌드 결과물(build 폴더)을 정적 파일로 제공
+// 리액트 빌드 결과물(build 폴더) 정적 파일 서빙
 app.use(cors());
 app.use(express.static(path.join(__dirname, "build")));
 
@@ -32,7 +32,6 @@ mcpServer.registerResource(
   "ui://widget/index.html",
   { mimeType: "text/html" },
   async () => {
-    // Dockerfile에서 npm run build 하면 'build' 폴더가 생깁니다.
     const indexPath = path.join(__dirname, "build", "index.html");
     const html = fs.readFileSync(indexPath, "utf8");
     return {
@@ -45,7 +44,7 @@ mcpServer.registerResource(
   }
 );
 
-// 2. 예약 도구 (실제 기능)
+// 2. 예약 도구 등록 (실제 기능)
 mcpServer.registerTool(
   "book_guest",
   {
@@ -77,3 +76,18 @@ mcpServer.registerTool(
       
       return { content: [{ type: "text", text: "예약이 성공적으로 완료되었습니다!" }] };
     } catch (error) {
+      console.error("❌ 예약 실패:", error);
+      return { content: [{ type: "text", text: `에러 발생: ${error.message}` }], isError: true };
+    }
+  }
+);
+
+const httpServer = createServer(app);
+const transport = new StreamableHTTPServerTransport({ enableJsonResponse: true });
+
+app.post("/mcp", async (req, res) => {
+  await mcpServer.connect(transport);
+  await transport.handleRequest(req, res);
+});
+
+httpServer.listen(PORT, () => console.log(`🚀 MCP Server running on port ${PORT}`));
