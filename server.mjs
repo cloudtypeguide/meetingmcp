@@ -14,6 +14,20 @@ const PORT = process.env.PORT || 8080;
 // 백엔드 주소
 const SPRING_API_URL = "https://port-0-cloudtype-backend-template-mg2vve8668cb34cb.sel3.cloudtype.app/api/guests";
 
+// 🟢 [신규 추가] 실제 회의실 이름 목록 (AI가 이 이름만 쓰도록 강제함)
+const AVAILABLE_ROOMS = [
+  "Focus Room",
+  "Creative Lab",
+  "Board Room"
+];
+
+// 🟢 [신규 추가] AI에게 줄 상세 정보 (인원수 등)
+const ROOM_DETAILS = {
+  "Focus Room": "정원 4명, 소규모 집중 회의용",
+  "Creative Lab": "정원 8명, 중규모 창의 회의용",
+  "Board Room": "정원 20명, 대규모 임원 회의용"
+};
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -27,7 +41,7 @@ app.post("/mcp", async (req, res) => {
       version: "1.0.0",
     });
 
-    // 1. UI 리소스 등록
+    // 1. UI 리소스 등록 (기존 유지)
     mcpServer.registerResource(
       "booking-ui",
       "ui://widget/index.html",
@@ -40,21 +54,37 @@ app.post("/mcp", async (req, res) => {
             uri: "ui://widget/index.html",
             mimeType: "text/html",
             text: html,
-            // 🟢 [추가] 테두리 설정 등 UI 관련 메타데이터
             _meta: { "openai/widgetPrefersBorder": true } 
           }]
         };
       }
     );
 
-    // 2. 스케줄 조회 도구
+    // 🟢 [신규 추가] 2. 회의실 정보 조회 도구
+    mcpServer.registerTool(
+      "get_rooms_info",
+      {
+        title: "회의실 목록 조회",
+        description: "예약 가능한 회의실 목록과 정원 정보를 조회합니다. 예약 전에 반드시 확인해야 합니다.",
+        inputSchema: {}
+      },
+      async () => {
+        return {
+          content: [{ 
+            type: "text", 
+            text: `현재 예약 가능한 회의실 목록: ${JSON.stringify(ROOM_DETAILS, null, 2)}` 
+          }]
+        };
+      }
+    );
+
+    // 3. 스케줄 조회 도구 (기존 유지 + UI 연결)
     mcpServer.registerTool(
       "check_schedule",
       {
         title: "예약 현황 조회",
         description: "현재 잡혀있는 예약 목록을 조회합니다.",
         inputSchema: {},
-        // 🟢 [핵심 추가] 이 도구를 쓰면 결과로 'booking-ui'를 보여줘라!
         _meta: {
           "openai/outputTemplate": "ui://widget/index.html",
           "openai/toolInvocation/invoking": "스케줄을 조회하고 있습니다...",
@@ -69,7 +99,6 @@ app.post("/mcp", async (req, res) => {
           const data = await response.json();
           return { 
             content: [{ type: "text", text: JSON.stringify(data) }],
-            // UI에 데이터를 전달하기 위해 structuredContent 사용
             structuredContent: { tasks: data } 
           };
         } catch (error) {
@@ -78,7 +107,7 @@ app.post("/mcp", async (req, res) => {
       }
     );
 
-    // 3. 예약 도구
+    // 4. 예약 도구 (검증 로직 추가됨)
     mcpServer.registerTool(
       "book_guest",
       {
@@ -87,13 +116,13 @@ app.post("/mcp", async (req, res) => {
         inputSchema: {
           deptName: z.string().describe("부서명"),
           bookerName: z.string().describe("예약자명"),
-          roomName: z.string().describe("회의실 이름"),
+          // 🟢 [수정됨] 정확한 이름 목록을 AI에게 설명으로 전달
+          roomName: z.string().describe(`회의실 이름 (반드시 다음 중 하나: ${AVAILABLE_ROOMS.join(", ")})`),
           date: z.string().describe("날짜 (YYYY-MM-DD)"),
           startTime: z.string().describe("시작 시간 (HH:mm)"),
           endTime: z.string().describe("종료 시간 (HH:mm)"),
           timeInfo: z.string().describe("회의 내용")
         },
-        // 🟢 [핵심 추가] 예약 기능을 쓸 때도 UI를 보여줘라!
         _meta: {
           "openai/outputTemplate": "ui://widget/index.html",
           "openai/toolInvocation/invoking": "예약을 진행 중입니다...",
@@ -102,6 +131,11 @@ app.post("/mcp", async (req, res) => {
       },
       async (args) => {
         try {
+          // 🟢 [신규 추가] AI가 없는 방을 예약하려고 하면 에러 발생
+          if (!AVAILABLE_ROOMS.includes(args.roomName)) {
+             throw new Error(`'${args.roomName}'은(는) 존재하지 않습니다. 정확한 이름: ${AVAILABLE_ROOMS.join(", ")}`);
+          }
+
           console.log("📤 예약 요청:", args);
           const response = await fetch(SPRING_API_URL, {
             method: "POST",
@@ -119,7 +153,7 @@ app.post("/mcp", async (req, res) => {
           
           return { content: [{ type: "text", text: "성공적으로 예약되었습니다." }] };
         } catch (error) {
-          return { content: [{ type: "text", text: `서버 에러: ${error.message}` }], isError: true };
+          return { content: [{ type: "text", text: `오류 발생: ${error.message}` }], isError: true };
         }
       }
     );
