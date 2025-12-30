@@ -1,7 +1,6 @@
 {
   "name": "waitlist-frontend",
   "version": "0.1.0",
-  "type": "module",
   "private": true,
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.1",
