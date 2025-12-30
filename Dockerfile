@@ -17,4 +17,4 @@ RUN npm run build
 
 # 5. 포트 열기 및 서버 실행
 EXPOSE 8080
-CMD ["node", "server.js"]
+CMD ["node", "server.mjs"]
