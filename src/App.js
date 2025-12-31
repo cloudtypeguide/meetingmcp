@@ -5,23 +5,28 @@ import Header from "./components/Header";
 import AddGuest from "./components/AddGuest";
 
 function App() {
+  
+  // 🟢 [스마트 라우팅] 현재 접속자가 MCP(ChatGPT)인지 확인
+  // server.mjs에서 심어준 변수(window.IS_MCP)가 있으면 true, 없으면 false
+  const isMcpWidget = window.IS_MCP === true;
+
   return (
     <div>
         <Router>
             <Header />
-            {/* 부트스트랩 레이아웃을 위해 container 클래스 추가 (선택사항) */}
             <div className="container"> 
                 <Routes>
-                    {/* 🔴 [핵심 변경] 기본 주소("/")로 들어오면 바로 '예약 폼'을 보여줍니다. */}
-                    <Route path = "/" element={<AddGuest />}></Route>
+                    {/* 🔴 [핵심] 상황에 따라 첫 화면을 다르게 보여줍니다! */}
+                    <Route 
+                        path="/" 
+                        element={isMcpWidget ? <AddGuest /> : <ListGuests />} 
+                    />
 
-                    {/* 목록을 보고 싶을 때는 명시적으로 주소를 입력하거나 메뉴를 통해 이동 */}
-                    <Route path = "/list" element={<ListGuests />}></Route>
-                    <Route path = "/waitlist" element={<ListGuests />}></Route>
-                    
-                    {/* 기존 경로들 유지 */}
-                    <Route path = "/add-guest" element={<AddGuest />}></Route>
-                    <Route path = "/edit-guest/:id" element={<AddGuest />}></Route>
+                    {/* 나머지 경로는 그대로 유지 */}
+                    <Route path="/list" element={<ListGuests />}></Route>
+                    <Route path="/waitlist" element={<ListGuests />}></Route>
+                    <Route path="/add-guest" element={<AddGuest />}></Route>
+                    <Route path="/edit-guest/:id" element={<AddGuest />}></Route>
                 </Routes>
             </div>
         </Router>
