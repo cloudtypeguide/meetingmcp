@@ -40,6 +40,7 @@ app.post("/mcp", async (req, res) => {
       version: "1.0.0",
     });
 
+    // 1. UI 리소스 등록
     mcpServer.registerResource(
       "booking-ui",
       "ui://widget/index.html",
@@ -48,6 +49,7 @@ app.post("/mcp", async (req, res) => {
         const indexPath = path.join(__dirname, "build", "index.html");
         let html = fs.readFileSync(indexPath, "utf8");
 
+        // AI가 입력해둔 데이터를 리액트로 주입하는 스크립트
         const injectScript = `
           <script>
             window.IS_MCP = true;
@@ -55,11 +57,13 @@ app.post("/mcp", async (req, res) => {
           </script>
         `;
 
+        // Base URL 및 데이터 주입
         if (BASE_URL) {
           html = html.replace("<head>", `<head><base href="${BASE_URL}">`);
         }
         html = html.replace("</body>", `${injectScript}</body>`);
 
+        // 데이터 사용 후 초기화
         pendingBookingData = null;
 
         return {
@@ -73,7 +77,7 @@ app.post("/mcp", async (req, res) => {
       }
     );
 
-    // 1. 회의실 정보 조회
+    // 2. 회의실 정보 조회 도구
     mcpServer.registerTool(
       "get_rooms_info",
       {
@@ -88,7 +92,7 @@ app.post("/mcp", async (req, res) => {
       }
     );
 
-    // 2. 스케줄 조회 (문구 수정됨)
+    // 3. 스케줄 조회 도구 (문구 수정됨)
     mcpServer.registerTool(
       "check_schedule",
       {
@@ -97,7 +101,6 @@ app.post("/mcp", async (req, res) => {
         inputSchema: {},
         _meta: {
           "openai/outputTemplate": "ui://widget/index.html",
-          // 🔴 [수정 완료] 요청하신 대로 문구를 변경했습니다.
           "openai/toolInvocation/invoking": "예약을 하기 전에 먼저 예약현황을 조회하겠습니다...",
           "openai/toolInvocation/invoked": "예약현황 조회 완료",
         }
@@ -108,4 +111,52 @@ app.post("/mcp", async (req, res) => {
           const response = await fetch(SPRING_API_URL);
           const data = await response.json();
           return { 
-            content
+            content: [{ type: "text", text: JSON.stringify(data) }],
+            structuredContent: { tasks: data } 
+          };
+        } catch (error) {
+          return { content: [{ type: "text", text: error.message }], isError: true };
+        }
+      }
+    );
+
+    // 4. 예약 신청서 작성 도구 (실제 예약 X)
+    mcpServer.registerTool(
+      "open_booking_form",
+      {
+        title: "예약_신청서_작성",
+        description: "사용자가 확정하기 전에, 예약 정보를 미리 입력한 화면을 띄워줍니다. 실제 예약은 사용자가 버튼을 눌러야 완료됩니다.",
+        inputSchema: {
+          deptName: z.string(),
+          bookerName: z.string(),
+          roomName: z.string(),
+          date: z.string(),
+          startTime: z.string(),
+          endTime: z.string(),
+          timeInfo: z.string()
+        },
+        _meta: {
+          "openai/outputTemplate": "ui://widget/index.html",
+          "openai/toolInvocation/invoking": "예약 신청서를 작성 중입니다...",
+          "openai/toolInvocation/invoked": "예약 화면을 준비했습니다. 확인 후 확정해주세요.",
+        }
+      },
+      async (args) => {
+        console.log("📝 예약 데이터 스테이징:", args);
+        pendingBookingData = args;
+        return { content: [{ type: "text", text: "예약 정보를 화면에 미리 입력했습니다. 하단의 [예약 확정하기] 버튼을 눌러주세요." }] };
+      }
+    );
+
+    const transport = new StreamableHTTPServerTransport({ enableJsonResponse: true });
+    await mcpServer.connect(transport);
+    await transport.handleRequest(req, res);
+
+  } catch (error) {
+    console.error("MCP Error:", error);
+    if (!res.headersSent) res.status(500).send("Server Error");
+  }
+});
+
+const httpServer = createServer(app);
+httpServer.listen(PORT, () => console.log(`🚀 MCP Server running on port ${PORT}`));
