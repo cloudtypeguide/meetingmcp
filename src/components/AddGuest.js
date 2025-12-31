@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import GuestService from '../services/GuestService'; // 경로는 본인 프로젝트에 맞게 확인 필요
+// 👇 [핵심] 방금 만든 파일의 경로와 이름이 정확해야 합니다.
+import GuestService from '../services/GuestService'; 
 
 const AddGuest = () => {
     // 폼 상태 관리
