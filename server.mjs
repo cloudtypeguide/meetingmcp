@@ -27,7 +27,7 @@ const ROOM_DETAILS = {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// AI가 작성한 데이터를 잠시 보관하는 변수
+// 🟢 [핵심] AI가 입력한 데이터를 임시 저장하는 변수
 let pendingBookingData = null;
 
 app.use(cors());
@@ -40,7 +40,7 @@ app.post("/mcp", async (req, res) => {
       version: "1.0.0",
     });
 
-    // 1. UI 리소스 등록
+    // 1. UI 리소스 등록 (데이터 주입 로직 포함)
     mcpServer.registerResource(
       "booking-ui",
       "ui://widget/index.html",
@@ -49,21 +49,24 @@ app.post("/mcp", async (req, res) => {
         const indexPath = path.join(__dirname, "build", "index.html");
         let html = fs.readFileSync(indexPath, "utf8");
 
-        // AI가 입력해둔 데이터를 리액트로 주입하는 스크립트
+        // 📝 [로그] 서버가 데이터를 가지고 있는지 확인
+        console.log("💉 UI 요청 들어옴. 주입할 데이터:", pendingBookingData);
+
+        // 🟢 [핵심] 리액트가 읽을 수 있도록 window 객체에 데이터 심기
         const injectScript = `
           <script>
             window.IS_MCP = true;
             window.PREFILLED_DATA = ${JSON.stringify(pendingBookingData)};
+            console.log("✅ 서버로부터 데이터 수신:", window.PREFILLED_DATA);
           </script>
         `;
 
-        // Base URL 및 데이터 주입
         if (BASE_URL) {
           html = html.replace("<head>", `<head><base href="${BASE_URL}">`);
         }
         html = html.replace("</body>", `${injectScript}</body>`);
 
-        // 데이터 사용 후 초기화
+        // 데이터를 주입했으면 초기화 (다음 요청을 위해)
         pendingBookingData = null;
 
         return {
@@ -77,7 +80,7 @@ app.post("/mcp", async (req, res) => {
       }
     );
 
-    // 2. 회의실 정보 조회 도구
+    // 2. 회의실 정보 조회
     mcpServer.registerTool(
       "get_rooms_info",
       {
@@ -92,7 +95,7 @@ app.post("/mcp", async (req, res) => {
       }
     );
 
-    // 3. 스케줄 조회 도구 (문구 수정됨)
+    // 3. 스케줄 조회
     mcpServer.registerTool(
       "check_schedule",
       {
@@ -107,7 +110,7 @@ app.post("/mcp", async (req, res) => {
       },
       async () => {
         try {
-          pendingBookingData = null; 
+          pendingBookingData = null; // 조회 시에는 폼 초기화
           const response = await fetch(SPRING_API_URL);
           const data = await response.json();
           return { 
@@ -120,12 +123,12 @@ app.post("/mcp", async (req, res) => {
       }
     );
 
-    // 4. 예약 신청서 작성 도구 (실제 예약 X)
+    // 4. 예약 신청서 작성 (데이터 스테이징)
     mcpServer.registerTool(
       "open_booking_form",
       {
         title: "예약_신청서_작성",
-        description: "사용자가 확정하기 전에, 예약 정보를 미리 입력한 화면을 띄워줍니다. 실제 예약은 사용자가 버튼을 눌러야 완료됩니다.",
+        description: "사용자가 확정하기 전에, 예약 정보를 미리 입력한 화면을 띄워줍니다.",
         inputSchema: {
           deptName: z.string(),
           bookerName: z.string(),
@@ -142,9 +145,9 @@ app.post("/mcp", async (req, res) => {
         }
       },
       async (args) => {
-        console.log("📝 예약 데이터 스테이징:", args);
-        pendingBookingData = args;
-        return { content: [{ type: "text", text: "예약 정보를 화면에 미리 입력했습니다. 하단의 [예약 확정하기] 버튼을 눌러주세요." }] };
+        console.log("📝 [서버] 예약 데이터 저장됨:", args);
+        pendingBookingData = args; // 전역 변수에 저장
+        return { content: [{ type: "text", text: "예약 정보를 입력했습니다. [예약 확정하기] 버튼을 눌러주세요." }] };
       }
     );
 
