@@ -14,8 +14,7 @@ const PORT = process.env.PORT || 8080;
 // 🟢 [설정] 백엔드 API 주소
 const SPRING_API_URL = "https://port-0-cloudtype-backend-template-mg2vve8668cb34cb.sel3.cloudtype.app/api/guests";
 
-// 🟢 [설정] 프론트엔드 배포 주소 (CSS/JS 로딩을 위해 필수)
-// 사용자님 로그에서 확인한 주소를 넣었습니다.
+// 🟢 [설정] 프론트엔드 배포 주소 (ChatGPT 내에서 리소스 로딩용)
 const BASE_URL = "https://port-0-meetingmcp-mg2vve8668cb34cb.sel3.cloudtype.app/";
 
 // 🟢 [설정] 실제 회의실 이름 및 정보
@@ -40,7 +39,7 @@ app.post("/mcp", async (req, res) => {
       version: "1.0.0",
     });
 
-    // 1. UI 리소스 등록 (여기가 제일 중요!)
+    // 1. UI 리소스 등록 (여기가 핵심!)
     mcpServer.registerResource(
       "booking-ui",
       "ui://widget/index.html",
@@ -49,9 +48,17 @@ app.post("/mcp", async (req, res) => {
         const indexPath = path.join(__dirname, "build", "index.html");
         let html = fs.readFileSync(indexPath, "utf8");
 
-        // 🔴 [핵심 수정] ChatGPT 내부에서 JS/CSS 파일을 찾을 수 있도록 Base URL 주입
+        // 🔴 [마법의 코드] 
+        // ChatGPT에게 줄 때만 <base> 태그와 IS_MCP 변수를 심습니다.
+        // - <base>: 흰 화면 방지 (경로 해결)
+        // - window.IS_MCP = true: App.js가 이걸 보고 '예약 폼'을 먼저 띄움
         if (BASE_URL) {
-          html = html.replace("<head>", `<head><base href="${BASE_URL}">`);
+          html = html.replace(
+            "<head>", 
+            `<head>
+             <base href="${BASE_URL}">
+             <script>window.IS_MCP = true;</script>` 
+          );
         }
 
         return {
